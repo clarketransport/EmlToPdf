@@ -14,5 +14,10 @@ namespace WcfVtImgLib.eml
         public List<string> Texts { get; set; } // text body
         public string Html { get; set; }        // html body
         public string Data { get; set; }        // image data
+
+        public EmlContent()
+        {
+            ContentTransferEncoding = EmlCType.QUOTED;
+        }
     }
 }

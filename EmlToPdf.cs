@@ -233,7 +233,14 @@ namespace WcfVtImgLib.eml
             byte[] bts = Convert.FromBase64String(imgData);
             MemoryStream ms = new MemoryStream(bts);
             System.Drawing.Bitmap bitmap = (System.Drawing.Bitmap)System.Drawing.Image.FromStream(ms);
-            bitmap.MakeTransparent(System.Drawing.Color.White);
+            if (IsTranslucent(bitmap))
+            {
+
+            }
+            else
+            {
+                bitmap.MakeTransparent(System.Drawing.Color.White);
+            }
             iTextSharp.text.Image img = iTextSharp.text.Image.GetInstance(bitmap, System.Drawing.Imaging.ImageFormat.Png);
             img.ScalePercent(72f / img.DpiX * 100);
             if (img.Width > page_wd)
@@ -319,6 +326,18 @@ namespace WcfVtImgLib.eml
                 pgrf.Add(blackText);
             }
             ColumnText.ShowTextAligned(cb, Element.ALIGN_LEFT, pgrf, left_x, pos_y, 0);
+        }
+
+        public bool IsTranslucent(System.Drawing.Bitmap bitmap)
+        {
+            var width = bitmap.Width;
+            var height = bitmap.Height;
+
+            for (var y = 0; y < height; y++)
+                for (var x = 0; x < width; x++)
+                    if (bitmap.GetPixel(x, y).A != 255)
+                        return false;
+            return true;
         }
     }
 }
