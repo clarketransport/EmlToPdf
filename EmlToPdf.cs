@@ -1,0 +1,319 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
+
+namespace WcfVtImgLib.eml
+{
+    public class EmlToPdf
+    {
+        const string MatchEmailPattern =
+          @"(([\w-]+\.)+[\w-]+|([a-zA-Z]{1}|[\w-]{2,}))@"
+          + @"((([0-1]?[0-9]{1,2}|25[0-5]|2[0-4][0-9])\.([0-1]?[0-9]{1,2}|25[0-5]|2[0-4][0-9])\."
+          + @"([0-1]?[0-9]{1,2}|25[0-5]|2[0-4][0-9])\.([0-1]?[0-9]{1,2}|25[0-5]|2[0-4][0-9])){1}|"
+          + @"([a-zA-Z]+[\w-]+\.)+[a-zA-Z]{2,4})";
+
+        const string MatchUrlPattern = @"(http(s)?://)?([\w-]+\.)+[\w-]+[.com]+(/[/?%&=]*)?";
+
+        const string FR = "From:";
+        const string SD = "Sent:";
+        const string DT = "Date:";
+        const string TO = "To:";
+        const string CC = "Cc:";
+        const string SJ = "Subject";
+
+        float left_x = 25;//30;
+        float right_x = 585;//760
+        float top_y = 760;//580
+
+        float pos_x = 25f;
+        float pos_y = 760f;
+        float line_gap = 12f;
+        float page_wd = 25f;
+        float page_ht = 760f;
+
+        Font ft_N;
+        //Font ft_B;
+
+        public byte[] CreatePdf(List<EmlObject> emls)
+        {
+            byte[] bytes = null;
+            ft_N = FontFactory.GetFont(FontFactory.HELVETICA, 11f, Font.NORMAL, BaseColor.BLACK);
+            //ft_B = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 11f, Font.NORMAL | Font.BOLD, BaseColor.BLACK);
+            PdfContentByte cb;
+            float y = top_y;
+
+            Document pdfDoc = new Document(PageSize.LETTER, 10f, 10f, 10f, 0f);
+            using (MemoryStream memoryStream = new MemoryStream())
+            {
+                PdfWriter writer = PdfWriter.GetInstance(pdfDoc, memoryStream);
+                pdfDoc.Open();
+                cb = writer.DirectContent;
+                page_wd = pdfDoc.PageSize.Width - 50;
+                page_ht = pdfDoc.PageSize.Height - 50;
+
+                pdfDoc.NewPage();
+                SetEmls(pdfDoc, cb, emls);
+
+                pdfDoc.Close();
+                bytes = memoryStream.ToArray();
+                memoryStream.Close();
+            }
+            return bytes;
+        }
+
+        private void SetEmls(Document pdfDoc, PdfContentByte cb, List<EmlObject> emls)
+        {
+            foreach (EmlObject eml in emls)
+            {
+                SetEml(pdfDoc, cb, eml);
+            }
+        }
+
+        private void SetEml(Document pdfDoc, PdfContentByte cb, EmlObject eml)
+        {
+            PdfBasicFun.ShowLeftText(cb, FR, ft_N, left_x, pos_y);
+            //PdfBasicFun.ShowLeftText(cb, eml.From, ft_N, left_x, pos_y);
+            SetText(pdfDoc, cb, eml.From);
+            pos_y = pos_y - line_gap;
+            PdfBasicFun.ShowLeftText(cb, DT, ft_N, left_x, pos_y);
+            PdfBasicFun.ShowLeftText(cb, eml.Date, ft_N, left_x, pos_y);
+            pos_y = pos_y - line_gap;
+
+            PdfBasicFun.ShowLeftText(cb, TO, ft_N, left_x, pos_y);
+            string[] toList = eml.To.Split(';');
+            //PdfBasicFun.ShowLeftText(cb, toList[0], ft_N, left_x, pos_y);
+            SetText(pdfDoc, cb, toList[0]);
+            pos_y = pos_y - line_gap;
+            for (int i = 1; i < toList.Length; i++)
+            {
+                string strTo = toList[i];
+                //PdfBasicFun.ShowLeftText(cb, strTo, ft_N, 100f, pos_y);
+                SetText(pdfDoc, cb, strTo);
+                pos_y = pos_y - line_gap;
+            }
+
+            if (eml.Cc != null && eml.Cc.Length > 0)
+            {
+                string ccc = eml.Cc.Substring(0, 3);
+                PdfBasicFun.ShowLeftText(cb, ccc, ft_N, left_x, pos_y);
+                string[] ccList = eml.Cc.Split(';');
+                //PdfBasicFun.ShowLeftText(cb, ccList[0], ft_N, left_x, pos_y);
+                SetText(pdfDoc, cb, ccList[0]);
+                pos_y = pos_y - line_gap;
+                for (int i = 1; i < toList.Length; i++)
+                {
+                    string strCc = ccList[i];
+                    //PdfBasicFun.ShowLeftText(cb, strCc, ft_N, 100f, pos_y);
+                    SetText(pdfDoc, cb, strCc);
+                    pos_y = pos_y - line_gap;
+                }
+            }
+
+            PdfBasicFun.ShowLeftText(cb, SJ, ft_N, left_x, pos_y);
+            PdfBasicFun.ShowLeftText(cb, eml.Subject, ft_N, left_x, pos_y);
+            pos_y = pos_y - line_gap;
+            pos_y = pos_y - line_gap;
+            pos_y = pos_y - line_gap;
+
+            SetContent(pdfDoc, cb, eml);
+        }
+
+        private void SetContent(Document pdfDoc, PdfContentByte cb, EmlObject eml)
+        {
+            foreach (EmlContent content in eml.Content)
+            {
+                if (content.ContentType.Contains(EmlCType.TEXT_PLAIN))
+                {
+                    SetTextContent(pdfDoc, cb, content.Texts);
+                }
+                else if (content.ContentType.Contains(EmlCType.TEXT_HTML))
+                {
+                    SetHtmlContent(pdfDoc, cb, content.Html);
+                }
+                else if (content.ContentType.Contains(EmlCType.IMG))
+                {
+                    SetImageContent(pdfDoc, cb, content.Data);
+                }
+            }
+        }
+
+        private void SetTextContent(Document pdfDoc, PdfContentByte cb, List<string> Texts)
+        {
+            int chunkSize = 110; // change 112 with the size of strings you want.
+            foreach (string text in Texts)
+            {
+                if (pos_y <= 10f)
+                {
+                    pdfDoc.NewPage();
+                    pos_y = top_y;
+                }
+                if (text.Length <= chunkSize)
+                {
+                    //PdfBasicFun.ShowLeftText(cb, text, ft_N, left_x, pos_y);
+                    SetText(pdfDoc, cb, text);
+                    pos_y = pos_y - line_gap;
+                }
+                else
+                {
+                    List<string> multiLines = new List<string>();
+                    StringBuilder sb = new StringBuilder();
+                    string[] newSplit = text.Split(' ');
+                    foreach (string str in newSplit)
+                    {
+                        if (sb.Length != 0)
+                            sb.Append(" ");
+
+                        if (sb.Length + str.Length > chunkSize)
+                        {
+                            multiLines.Add(sb.ToString());
+                            sb.Clear();
+                        }
+                        sb.Append(str);
+                    }
+                    multiLines.Add(sb.ToString());
+
+                    foreach (string line in multiLines)
+                    {
+                        if (pos_y <= 10f)
+                        {
+                            pdfDoc.NewPage();
+                            pos_y = top_y;
+                        }
+                        //PdfBasicFun.ShowLeftText(cb, line, ft_N, left_x, pos_y);
+                        SetText(pdfDoc, cb, line);
+                        pos_y = pos_y - line_gap;
+                    }
+                }
+            }
+        }
+
+        private void SetHtmlContent(Document pdfDoc, PdfContentByte cb, string html)
+        {
+            EmlParser emlParser = new EmlParser();
+            //string str = emlParser.HTMLToText(html);
+            //string[] lines = str.Split('\n');
+            string str = emlParser.StripHTML(html);
+            string[] lines = str.Split('\r');
+            List<string> Texts = new List<string>(lines);
+            SetTextContent(pdfDoc, cb, Texts);
+        }
+
+        private void SetImageContent(Document pdfDoc, PdfContentByte cb, string imgData)
+        {
+            byte[] bts = Convert.FromBase64String(imgData);
+            MemoryStream ms = new MemoryStream(bts);
+            System.Drawing.Bitmap bitmap = (System.Drawing.Bitmap)System.Drawing.Image.FromStream(ms);
+            bitmap.MakeTransparent(System.Drawing.Color.White);
+            iTextSharp.text.Image img = iTextSharp.text.Image.GetInstance(bitmap, System.Drawing.Imaging.ImageFormat.Png);
+            img.ScalePercent(72f / img.DpiX * 100);
+            if (img.Width > page_wd)
+            {
+                var imgHt = img.Height * page_wd / img.Width;
+                if (pos_y - imgHt < 10f)
+                {
+                    pdfDoc.NewPage();
+                    pos_y = top_y;
+                }
+                pos_y = pos_y - imgHt;
+                img.SetAbsolutePosition(left_x, pos_y);
+                img.ScaleToFit(page_wd, imgHt);
+            }
+            else
+            {
+                pos_y = pos_y - img.Height;
+                img.SetAbsolutePosition(left_x, pos_y);
+            }
+            cb.AddImage(img);
+        }
+
+        private void SetText(Document pdfDoc, PdfContentByte cb, string text)
+        {
+            if (text.Contains("@"))
+            {
+                SetBlakcBlueLine(pdfDoc, cb, text, MatchEmailPattern, 0);
+            }
+            else
+            {
+                SetBlakcBlueLine(pdfDoc, cb, text, MatchUrlPattern, 1);
+            }
+        }
+
+
+        private void GetUrls(string text, string matchlPattern)
+        {
+            //var linkParser = new Regex(@"\b(?:https?://|www\.)\S+\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            //var rawString = "house home go www.monstermmorpg.com nice hospital http://www.monstermmorpg.com this is incorrect url http://www.monstermmorpg.commerged continue";
+            //foreach (Match match in linkParser.Matches(rawString)) 
+
+
+            Regex rx = new Regex(
+              matchlPattern,
+              RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+            // Find matches.
+            MatchCollection matches = rx.Matches(text);
+
+            // Report the number of matches found.
+            int noOfMatches = matches.Count;
+
+            // Report on each match.
+            foreach (Match match in matches)
+            {
+                string data = match.Value.ToString();
+            }        
+        }
+
+        private void SetBlakcBlueLine(Document pdfDoc, PdfContentByte cb, string text, string matchlPattern, int type)
+        {
+            Font black = FontFactory.GetFont(FontFactory.HELVETICA, 11f, Font.NORMAL, BaseColor.BLACK);
+            Font blue = FontFactory.GetFont(FontFactory.HELVETICA, 11f, Font.NORMAL | Font.UNDEFINED, BaseColor.BLUE);
+
+            string textb = text;
+
+            Regex rx = new Regex(matchlPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            MatchCollection matches = rx.Matches(text);
+
+            Paragraph pgrf = new Paragraph();
+            if (matches.Count > 0)
+            {
+                // Report on each match.
+                foreach (Match match in matches)
+                {
+                    string data = match.Value.ToString();
+                    int st_pos = textb.IndexOf(data);
+                    string datab = textb.Substring(0, st_pos);
+                    if (type == 1 && datab == datab.TrimEnd())
+                        datab = datab + " ";
+                    Chunk blackText = new Chunk(datab, black); 
+                    pgrf.Add(blackText);
+                    Chunk blueText = new Chunk(data, blue); 
+                    pgrf.Add(blueText);
+                    if (textb.Length > st_pos + data.Length)
+                    {
+                        textb = textb.Substring(st_pos + data.Length);
+                    }
+                    else
+                    {
+                        textb = "";
+                    }
+                }
+                if (textb.Length > 0)
+                {
+                    Chunk blackText = new Chunk(textb, black); 
+                    pgrf.Add(blackText);
+                }
+            }
+            else
+            {
+                Chunk blackText = new Chunk(textb, black);
+                pgrf.Add(blackText);
+            }
+            ColumnText.ShowTextAligned(cb, Element.ALIGN_LEFT, pgrf, left_x, pos_y, 0);
+        }
+    }
+}
