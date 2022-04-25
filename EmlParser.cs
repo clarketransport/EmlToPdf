@@ -171,7 +171,7 @@ namespace WcfVtImgLib.eml
                 }
                 line_pos++;
             }
-            if (line_pos >= line_cnt) 
+            if (line_pos >= line_cnt)
             {
                 SetData(content, list);
             }
@@ -188,14 +188,51 @@ namespace WcfVtImgLib.eml
             if (content.ContentType.StartsWith(EmlCType.TEXT_HTML))
             {
                 if (content.ContentTransferEncoding.StartsWith(EmlCType.QUOTED))
-                    content.Html = utilities.GetHtmlData(list);
+                    content.Html = StripHTML(utilities.GetHtmlData(list));
                 else
-                    content.Html = utilities.GetEncodedHtmlData(list, content.ContentType);
+                    content.Html = StripHTML(utilities.GetEncodedHtmlData(list, content.ContentType));
             }
             if (content.ContentType.StartsWith(EmlCType.IMG))
             {
                 content.Data = utilities.GetImageData(list);
             }
+        }
+
+        public string HTMLToText(string HTMLCode)
+        {
+            // Remove new lines since they are not visible in HTML
+            //HTMLCode = HTMLCode.Replace("\n", " ");
+            // Remove tab spaces
+            HTMLCode = HTMLCode.Replace("\t", " ");
+            // Remove multiple white spaces from HTML
+            HTMLCode = Regex.Replace(HTMLCode, "\\s+", " ");
+            // Remove HEAD tag
+            HTMLCode = Regex.Replace(HTMLCode, "<head.*?</head>", ""
+                                , RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // Remove any JavaScript
+            HTMLCode = Regex.Replace(HTMLCode, "<script.*?</script>", ""
+              , RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // Replace special characters like &, <, >, " etc.
+            StringBuilder sbHTML = new StringBuilder(HTMLCode);
+            // Note: There are many more special characters, these are just
+            // most common. You can add new characters in this arrays if needed
+            string[] OldWords = {"&nbsp;", "&amp;", "&quot;", "&lt;", "&gt;", "&reg;", "&copy;", "&bull;", "&trade;","&#39;",
+                                 "&#8211;", "=E0", "="
+                                };
+            string[] NewWords = { " ", "&", "\"", "<", ">", "Â®", "Â©", "â€¢", "â„¢", "\'",
+                                "-", "", ""
+                                };
+            for (int i = 0; i < OldWords.Length; i++)
+            {
+                sbHTML.Replace(OldWords[i], NewWords[i]);
+            }
+            // Check if there are line breaks (<br>) or paragraph (<p>)
+            sbHTML.Replace("<br>", "\n<br>");
+            sbHTML.Replace("<br ", "\n<br ");
+            sbHTML.Replace("<p ", "\n<p ");
+            // Finally, remove all HTML tags and return plain text
+            return System.Text.RegularExpressions.Regex.Replace(
+              sbHTML.ToString(), "<[^>]*>", "");
         }
 
         public string StripHTML(string source)
@@ -289,9 +326,6 @@ namespace WcfVtImgLib.eml
                 result = System.Text.RegularExpressions.Regex.Replace(result,
                          @" ", " ",
                          System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                result = System.Text.RegularExpressions.Regex.Replace(result,
-                         @"&nbsp;", " ",
-                         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
                 result = System.Text.RegularExpressions.Regex.Replace(result,
                          @"&bull;", " * ",
@@ -381,7 +415,5 @@ namespace WcfVtImgLib.eml
                 return source;
             }
         }
-
-
     }
 }
